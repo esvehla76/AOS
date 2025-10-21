@@ -17,9 +17,10 @@ input ENUM_APPLIED_PRICE EMA_Price       = PRICE_CLOSE;     // Typ ceny pro EMA
 input double             PullbackTolerance = 1500.0;        // Tolerance pullback v bodech (pro XAUUSD: 100 bodů = 1 USD)
 
 input group "=== RSI Filtr ==="
+input bool   UseRSIFilter   = false;                        // Použít RSI filtr (doporučeno: false pro více obchodů)
 input int    RSI_Period     = 14;                           // RSI perioda
-input double RSI_BuyLevel   = 45.0;                         // RSI úroveň pro BUY (pullback v uptrendu) - zvýšeno pro více signálů
-input double RSI_SellLevel  = 55.0;                         // RSI úroveň pro SELL (pullback v downtrendu) - sníženo pro více signálů
+input double RSI_BuyLevel   = 45.0;                         // RSI úroveň pro BUY (pullback v uptrendu) - pouze pokud UseRSIFilter=true
+input double RSI_SellLevel  = 55.0;                         // RSI úroveň pro SELL (pullback v downtrendu) - pouze pokud UseRSIFilter=true
 
 input group "=== ATR Filtr ==="
 input int    ATR_Period         = 14;                       // ATR perioda
@@ -97,7 +98,10 @@ int OnInit()
     Print("Timeframe: ", EnumToString(PERIOD_CURRENT));
     Print("EMA Fast / Slow: ", EMA_Fast_Period, " / ", EMA_Slow_Period);
     Print("Pullback Tolerance: ", PullbackTolerance, " bodů (0=striktní)");
-    Print("RSI Period: ", RSI_Period, " | Buy<", RSI_BuyLevel, " | Sell>", RSI_SellLevel);
+    if(UseRSIFilter)
+        Print("RSI Filter: ON | Period: ", RSI_Period, " | Buy<", RSI_BuyLevel, " | Sell>", RSI_SellLevel);
+    else
+        Print("RSI Filter: OFF (ignoruje RSI podmínky)");
     Print("ATR Period: ", ATR_Period, " | Min Volatility: ", ATR_MinVolatility);
     Print("Max Spread: ", Max_Spread, " USD");
     Print("TP: ", TakeProfitPips, " pips | SL: ", StopLossPips, " pips");
@@ -221,17 +225,22 @@ void OnTick()
     if(!ReverseMode)
     {
         // STANDARD: Pullback pokračující ve směru trendu
-        if(upTrend && pullbackLong && rsi_value < RSI_BuyLevel)
+        bool buyCondition = upTrend && pullbackLong && (!UseRSIFilter || rsi_value < RSI_BuyLevel);
+        bool sellCondition = downTrend && pullbackShort && (!UseRSIFilter || rsi_value > RSI_SellLevel);
+        
+        if(buyCondition)
         {
             Print("🟢 BUY SIGNÁL (Standard Pullback)");
-            Print("   Trend UP (emaFast>emaSlow), cena < emaSlow, RSI<", RSI_BuyLevel);
+            Print("   Trend UP (emaFast>emaSlow), cena v toleranci emaSlow");
+            if(UseRSIFilter) Print("   RSI<", RSI_BuyLevel);
             OpenPosition(ORDER_TYPE_BUY, rsi_value, atr_value, currentSpread);
             return;
         }
-        if(downTrend && pullbackShort && rsi_value > RSI_SellLevel)
+        if(sellCondition)
         {
             Print("🔴 SELL SIGNÁL (Standard Pullback)");
-            Print("   Trend DOWN (emaFast<emaSlow), cena > emaSlow, RSI>", RSI_SellLevel);
+            Print("   Trend DOWN (emaFast<emaSlow), cena v toleranci emaSlow");
+            if(UseRSIFilter) Print("   RSI>", RSI_SellLevel);
             OpenPosition(ORDER_TYPE_SELL, rsi_value, atr_value, currentSpread);
             return;
         }
@@ -239,17 +248,22 @@ void OnTick()
     else
     {
         // REVERSE: Obchod proti trendu z extrému
-        if(upTrend && pullbackShort && rsi_value > RSI_SellLevel)
+        bool buyCondition = upTrend && pullbackShort && (!UseRSIFilter || rsi_value > RSI_SellLevel);
+        bool sellCondition = downTrend && pullbackLong && (!UseRSIFilter || rsi_value < RSI_BuyLevel);
+        
+        if(buyCondition)
         {
             Print("🟢 BUY SIGNÁL (Reverse protitrend)");
-            Print("   Trend UP, cena nad emaSlow (přepáleno), RSI>", RSI_SellLevel);
+            Print("   Trend UP, cena nad emaSlow (přepáleno)");
+            if(UseRSIFilter) Print("   RSI>", RSI_SellLevel);
             OpenPosition(ORDER_TYPE_BUY, rsi_value, atr_value, currentSpread);
             return;
         }
-        if(downTrend && pullbackLong && rsi_value < RSI_BuyLevel)
+        if(sellCondition)
         {
             Print("🔴 SELL SIGNÁL (Reverse protitrend)");
-            Print("   Trend DOWN, cena pod emaSlow (přepáleno), RSI<", RSI_BuyLevel);
+            Print("   Trend DOWN, cena pod emaSlow (přepáleno)");
+            if(UseRSIFilter) Print("   RSI<", RSI_BuyLevel);
             OpenPosition(ORDER_TYPE_SELL, rsi_value, atr_value, currentSpread);
             return;
         }
@@ -262,13 +276,14 @@ void OnTick()
         if(!upTrend && !downTrend) reasons+="| Bez jasného trendu ";
         if(upTrend && !pullbackLong) reasons+=StringFormat("| Cena příliš nad emaSlow (dist=%.2f > tol=%.2f) ", distance, tolerance);
         if(downTrend && !pullbackShort) reasons+=StringFormat("| Cena příliš pod emaSlow (dist=%.2f < -tol=%.2f) ", distance, tolerance);
-        if(upTrend && pullbackLong && (rsi_value >= RSI_BuyLevel) && !ReverseMode) reasons+="| RSI není < BuyLevel ";
-        if(downTrend && pullbackShort && (rsi_value <= RSI_SellLevel) && !ReverseMode) reasons+="| RSI není > SellLevel ";
+        if(UseRSIFilter && upTrend && pullbackLong && (rsi_value >= RSI_BuyLevel) && !ReverseMode) reasons+="| RSI není < BuyLevel ";
+        if(UseRSIFilter && downTrend && pullbackShort && (rsi_value <= RSI_SellLevel) && !ReverseMode) reasons+="| RSI není > SellLevel ";
         if(ReverseMode && upTrend && !pullbackShort) reasons+="| Reverse BUY: cena není dost nad emaSlow ";
-        if(ReverseMode && upTrend && pullbackShort && !(rsi_value > RSI_SellLevel)) reasons+="| Reverse BUY: RSI není > SellLevel ";
+        if(UseRSIFilter && ReverseMode && upTrend && pullbackShort && !(rsi_value > RSI_SellLevel)) reasons+="| Reverse BUY: RSI není > SellLevel ";
         if(ReverseMode && downTrend && !pullbackLong) reasons+="| Reverse SELL: cena není dost pod emaSlow ";
-        if(ReverseMode && downTrend && pullbackLong && !(rsi_value < RSI_BuyLevel)) reasons+="| Reverse SELL: RSI není < BuyLevel ";
-        Print("⚪ Žádný signál - upTrend=", upTrend, " downTrend=", downTrend, " close=", DoubleToString(close_price,5), " emaSlow=", DoubleToString(emaSlow_curr,5), " dist=", DoubleToString(distance,2), " RSI=", DoubleToString(rsi_value,2), " Důvody: ", reasons);
+        if(UseRSIFilter && ReverseMode && downTrend && pullbackLong && !(rsi_value < RSI_BuyLevel)) reasons+="| Reverse SELL: RSI není < BuyLevel ";
+        string rsiStatus = UseRSIFilter ? StringFormat(" RSI=%.2f", rsi_value) : " RSI=OFF";
+        Print("⚪ Žádný signál - upTrend=", upTrend, " downTrend=", downTrend, " close=", DoubleToString(close_price,5), " emaSlow=", DoubleToString(emaSlow_curr,5), " dist=", DoubleToString(distance,2), rsiStatus, " Důvody: ", reasons);
     } else {
         Print("⚪ Žádný signál - upTrend=", upTrend, " downTrend=", downTrend, " close=", DoubleToString(close_price,5), " emaSlow=", DoubleToString(emaSlow_curr,5), " RSI=", DoubleToString(rsi_value,2));
     }
