@@ -14,7 +14,7 @@ input group "=== EMA Nastavení ==="
 input int                EMA_Fast_Period = 9;               // Rychlá EMA
 input int                EMA_Slow_Period = 21;              // Pomalá EMA
 input ENUM_APPLIED_PRICE EMA_Price       = PRICE_CLOSE;     // Typ ceny pro EMA
-input double             PullbackTolerance = 50.0;          // Tolerance pullback v bodech (0=striktní)
+input double             PullbackTolerance = 1500.0;        // Tolerance pullback v bodech (pro XAUUSD: 100 bodů = 1 USD)
 
 input group "=== RSI Filtr ==="
 input int    RSI_Period     = 14;                           // RSI perioda
@@ -207,6 +207,8 @@ void OnTick()
     
     // Logika vstupu podle ReverseMode
     double point = SymbolInfoDouble(_Symbol, SYMBOL_POINT);
+    // Pro XAUUSD: 1 bod = 0.01 USD, takže PullbackTolerance v bodech → tolerance v ceně
+    // Např: 1500 bodů * 0.01 = 15.00 USD distance
     double tolerance = PullbackTolerance * point;
     
     bool upTrend   = emaFast_curr > emaSlow_curr;      // definice trendu nahoru
