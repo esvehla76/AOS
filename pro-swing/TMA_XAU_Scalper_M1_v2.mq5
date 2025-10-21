@@ -17,8 +17,8 @@ input ENUM_APPLIED_PRICE EMA_Price       = PRICE_CLOSE;     // Typ ceny pro EMA
 
 input group "=== RSI Filtr ==="
 input int    RSI_Period     = 14;                           // RSI perioda
-input double RSI_BuyLevel   = 40.0;                         // RSI úroveň pro BUY (pullback v uptrendu)
-input double RSI_SellLevel  = 60.0;                         // RSI úroveň pro SELL (pullback v downtrendu)
+input double RSI_BuyLevel   = 45.0;                         // RSI úroveň pro BUY (pullback v uptrendu) - zvýšeno pro více signálů
+input double RSI_SellLevel  = 55.0;                         // RSI úroveň pro SELL (pullback v downtrendu) - sníženo pro více signálů
 
 input group "=== ATR Filtr ==="
 input int    ATR_Period         = 14;                       // ATR perioda
@@ -38,10 +38,12 @@ input group "=== Trading Time ==="
 input string TradingStart = "08:00";                        // Start obchodování (HH:MM)
 input string TradingEnd   = "20:00";                        // Konec obchodování (HH:MM)
 
-input group "=== Ostatní ==="
-input bool   ReverseMode   = false;                         // Obrátit logiku vstupů (BUY↔SELL)
-input int    MagicNumber   = 777002;                        // Magic number
-input string TradeComment  = "EMA_Scalper";                 // Komentář k pozicím
+input group "=== Debug & Ostatní ==="
+input bool   ReverseMode     = false;                       // Obrátit logiku vstupů (BUY↔SELL)
+input bool   UseClosedBarEMA = true;                        // Použít hodnoty EMA z uzavřeného baru (stabilnější)
+input bool   DebugMode       = true;                        // Detailní debug logy
+input int    MagicNumber     = 777002;                      // Magic number
+input string TradeComment    = "EMA_Scalper";               // Komentář k pozicím
 
 //--- Globální proměnné
 int rsi_handle;        // Handle pro RSI indikátor
@@ -166,19 +168,20 @@ void OnTick()
     double rsi_value = GetRSI();
     double atr_value = GetATR();
     // Získání EMA hodnot
-    double emaFast_buff[2];
-    double emaSlow_buff[2];
+    double emaFast_buff[3];
+    double emaSlow_buff[3];
     ArraySetAsSeries(emaFast_buff, true);
     ArraySetAsSeries(emaSlow_buff, true);
-    if(CopyBuffer(emaFast_handle, 0, 0, 2, emaFast_buff) < 2 || CopyBuffer(emaSlow_handle, 0, 0, 2, emaSlow_buff) < 2)
+    if(CopyBuffer(emaFast_handle, 0, 0, 3, emaFast_buff) < 3 || CopyBuffer(emaSlow_handle, 0, 0, 3, emaSlow_buff) < 3)
     {
         Print("❌ Chyba při kopírování EMA bufferu");
         return;
     }
-    double emaFast_curr = emaFast_buff[0];
-    double emaFast_prev = emaFast_buff[1];
-    double emaSlow_curr = emaSlow_buff[0];
-    double emaSlow_prev = emaSlow_buff[1];
+    // Pokud UseClosedBarEMA=true, bereme hodnotu z předchozího uzavřeného baru (index 1)
+    double emaFast_curr = UseClosedBarEMA ? emaFast_buff[1] : emaFast_buff[0];
+    double emaFast_prev = UseClosedBarEMA ? emaFast_buff[2] : emaFast_buff[1];
+    double emaSlow_curr = UseClosedBarEMA ? emaSlow_buff[1] : emaSlow_buff[0];
+    double emaSlow_prev = UseClosedBarEMA ? emaSlow_buff[2] : emaSlow_buff[1];
     
     if(emaFast_curr == 0.0 || emaSlow_curr == 0.0)
     {
@@ -243,7 +246,22 @@ void OnTick()
         }
     }
     
-    Print("⚪ Žádný signál - upTrend=", upTrend, " downTrend=", downTrend, " close=", DoubleToString(close_price,5), " emaSlow=", DoubleToString(emaSlow_curr,5), " RSI=", DoubleToString(rsi_value,2));
+    if(DebugMode)
+    {
+        string reasons="";
+        if(!upTrend && !downTrend) reasons+="| Bez jasného trendu ";
+        if(upTrend && !(close_price < emaSlow_curr)) reasons+="| Cena není pod emaSlow pro long pullback ";
+        if(downTrend && !(close_price > emaSlow_curr)) reasons+="| Cena není nad emaSlow pro short pullback ";
+        if(upTrend && (rsi_value >= RSI_BuyLevel) && !ReverseMode) reasons+="| RSI není < BuyLevel ";
+        if(downTrend && (rsi_value <= RSI_SellLevel) && !ReverseMode) reasons+="| RSI není > SellLevel ";
+        if(ReverseMode && upTrend && !(close_price > emaSlow_curr)) reasons+="| Reverse BUY: cena není nad emaSlow ";
+        if(ReverseMode && upTrend && !(rsi_value > RSI_SellLevel)) reasons+="| Reverse BUY: RSI není > SellLevel ";
+        if(ReverseMode && downTrend && !(close_price < emaSlow_curr)) reasons+="| Reverse SELL: cena není pod emaSlow ";
+        if(ReverseMode && downTrend && !(rsi_value < RSI_BuyLevel)) reasons+="| Reverse SELL: RSI není < BuyLevel ";
+        Print("⚪ Žádný signál - upTrend=", upTrend, " downTrend=", downTrend, " close=", DoubleToString(close_price,5), " emaSlow=", DoubleToString(emaSlow_curr,5), " RSI=", DoubleToString(rsi_value,2), " Důvody: ", reasons);
+    } else {
+        Print("⚪ Žádný signál - upTrend=", upTrend, " downTrend=", downTrend, " close=", DoubleToString(close_price,5), " emaSlow=", DoubleToString(emaSlow_curr,5), " RSI=", DoubleToString(rsi_value,2));
+    }
 }
 
 //+------------------------------------------------------------------+
