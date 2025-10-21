@@ -168,8 +168,8 @@ void OnTick()
     double rsi_value = GetRSI();
     double atr_value = GetATR();
     // Získání EMA hodnot
-    double emaFast_buff[3];
-    double emaSlow_buff[3];
+    double emaFast_buff[];
+    double emaSlow_buff[];
     ArraySetAsSeries(emaFast_buff, true);
     ArraySetAsSeries(emaSlow_buff, true);
     if(CopyBuffer(emaFast_handle, 0, 0, 3, emaFast_buff) < 3 || CopyBuffer(emaSlow_handle, 0, 0, 3, emaSlow_buff) < 3)
