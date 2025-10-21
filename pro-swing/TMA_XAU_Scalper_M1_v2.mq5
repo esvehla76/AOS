@@ -31,8 +31,9 @@ input group "=== Spread Filter ==="
 input double Max_Spread = 1.0;                              // Max spread v USD
 
 input group "=== Risk Management ==="
-input double TakeProfitPips = 25.0;                         // Take Profit v pipech
-input double StopLossPips   = 12.0;                         // Stop Loss v pipech
+input double TakeProfitPips = 12.0;                         // Take Profit v pipech (scalp rychlý exit)
+input double StopLossPips   = 25.0;                         // Stop Loss v pipech (širší prostor)
+input double MinPullbackSize = 5.0;                         // Min velikost pullbacku v pipech (filtr hluku)
 input double LotSize        = 0.10;                         // Velikost lotu
 input bool   UseMoneyManagement = false;                    // Použít Money Management
 input double RiskPercent = 0.5;                             // Riziko v % účtu (pokud MM=true)
@@ -213,6 +214,15 @@ void OnTick()
         Print("⚠️ ATR příliš nízký (nízká volatilita): ", DoubleToString(atr_value, 3), " < ", ATR_MinVolatility);
         return;
     }
+    
+        // Kontrola minimální velikosti pullbacku (filtr hluku)
+        double barSize = MathAbs(close_price - open_price);
+        double minPullbackPoints = MinPullbackSize * point * 10; // v ceně
+        if(barSize < minPullbackPoints)
+        {
+            Print("⚠️ Bar příliš malý (hluk): ", DoubleToString(barSize, 2), " < ", DoubleToString(minPullbackPoints, 2));
+            return;
+        }
     
     // Logika vstupu podle ReverseMode
     double point = SymbolInfoDouble(_Symbol, SYMBOL_POINT);
