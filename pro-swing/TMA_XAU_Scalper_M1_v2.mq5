@@ -46,6 +46,8 @@ input string TradeComment  = "EMA_Scalper";                 // Komentář k pozi
 //--- Globální proměnné
 int rsi_handle;        // Handle pro RSI indikátor
 int atr_handle;        // Handle pro ATR indikátor
+int emaFast_handle;    // Handle pro rychlou EMA
+int emaSlow_handle;    // Handle pro pomalou EMA
 datetime lastBarTime = 0;
 
 //+------------------------------------------------------------------+
@@ -66,6 +68,20 @@ int OnInit()
     if(atr_handle == INVALID_HANDLE)
     {
         Print("❌ CHYBA: Nelze inicializovat ATR indikátor");
+        return(INIT_FAILED);
+    }
+
+    // Inicializace EMA indikátorů (vrací handle)
+    emaFast_handle = iMA(_Symbol, PERIOD_CURRENT, EMA_Fast_Period, 0, MODE_EMA, EMA_Price);
+    if(emaFast_handle == INVALID_HANDLE)
+    {
+        Print("❌ CHYBA: Nelze inicializovat EMA Fast");
+        return(INIT_FAILED);
+    }
+    emaSlow_handle = iMA(_Symbol, PERIOD_CURRENT, EMA_Slow_Period, 0, MODE_EMA, EMA_Price);
+    if(emaSlow_handle == INVALID_HANDLE)
+    {
+        Print("❌ CHYBA: Nelze inicializovat EMA Slow");
         return(INIT_FAILED);
     }
     
@@ -150,12 +166,21 @@ void OnTick()
     double rsi_value = GetRSI();
     double atr_value = GetATR();
     // Získání EMA hodnot
-    double emaFast_curr = iMA(_Symbol, PERIOD_CURRENT, EMA_Fast_Period, 0, MODE_EMA, EMA_Price, 0);
-    double emaFast_prev = iMA(_Symbol, PERIOD_CURRENT, EMA_Fast_Period, 0, MODE_EMA, EMA_Price, 1);
-    double emaSlow_curr = iMA(_Symbol, PERIOD_CURRENT, EMA_Slow_Period, 0, MODE_EMA, EMA_Price, 0);
-    double emaSlow_prev = iMA(_Symbol, PERIOD_CURRENT, EMA_Slow_Period, 0, MODE_EMA, EMA_Price, 1);
+    double emaFast_buff[2];
+    double emaSlow_buff[2];
+    ArraySetAsSeries(emaFast_buff, true);
+    ArraySetAsSeries(emaSlow_buff, true);
+    if(CopyBuffer(emaFast_handle, 0, 0, 2, emaFast_buff) < 2 || CopyBuffer(emaSlow_handle, 0, 0, 2, emaSlow_buff) < 2)
+    {
+        Print("❌ Chyba při kopírování EMA bufferu");
+        return;
+    }
+    double emaFast_curr = emaFast_buff[0];
+    double emaFast_prev = emaFast_buff[1];
+    double emaSlow_curr = emaSlow_buff[0];
+    double emaSlow_prev = emaSlow_buff[1];
     
-    if(emaFast_curr == 0 || emaSlow_curr == 0)
+    if(emaFast_curr == 0.0 || emaSlow_curr == 0.0)
     {
         Print("❌ EMA hodnoty nejsou dostupné");
         return;
